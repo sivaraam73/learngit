@@ -1,0 +1,322 @@
+---
+
+- name: Install EPEL Package
+  hosts: ipaserver
+  remote_user: almalinux
+  become: true
+  tasks:
+  - name: Install package epel-release
+    yum:
+      name: epel-release
+      state: present
+      #when: ansible_facts['os_family'] == "Alma Linux" and ansible_facts['lsb']['major_release'] | int == '8' 
+    tags: task1
+
+  # - name: Ensure the crb repository is enabled
+  #   community.general.dnf_config_manager:
+  #     name: crb
+  #     state: enabled
+  #   register: result
+  #   ignore_errors: True
+  #   tags: task2
+
+
+  - name: Downgrade Alma Linux 8 to OS Ver 8.9 - Update /etc/dnf/vars/releasever
+    shell: |
+      yum --releasever=8.9 downgrade redhat-release -y
+      echo "8.9" > /etc/dnf/vars/releasever
+      dnf update -y
+      dnf upgrade -y
+    register: downgrade_alma8_result
+    ignore_errors: True
+    tags: task3
+  
+
+  - name: Upgrade all packages
+    ansible.builtin.dnf:
+      name: "*"
+      state: latest
+    register: upgrade_package_result
+    ignore_errors: True
+    tags: task7
+
+
+  - name: Install Standard Packages
+    ansible.builtin.dnf:
+      name: 
+        - htop
+        - wget
+        - curl
+        - git 
+        - net-tools
+        - nc
+        - iptables-services
+        - bind
+        - bind-utils
+      state: latest
+    register: install_package_result
+    ignore_errors: True 
+    tags: task9
+
+
+  
+
+
+  # - name: Modify 127.0.0.1 servername
+  #   lineinfile:
+  #     path: /etc/hosts
+  #     regexp: '127.0.0.1       iambee1.ipatest.beebryte.uk     iambee1'
+  #     line: '"$(ip addr show "eth0" | grep "inet "" | awk "{ print $2}" | cut -d/ -f1)"     iambee1.ipatest.beebryte.uk     iambee1'
+  #     #insertafter: ''
+  #     state: present
+  #     backup: yes
+  
+
+
+  - name: Remove IPA Server 127.0.0.1 entry
+    ansible.builtin.lineinfile:
+      path: /etc/hosts
+      regexp: '^127\.0\.0\.1.*ansible-test.alma8.beebryte.tech.*$'
+      owner: root
+      group: root
+      mode: '0644'
+      state: absent
+    ignore_errors: True
+    tags: task11
+
+
+  - name: Insert IPA Server host entry
+    ansible.builtin.lineinfile:
+      path: /etc/hosts
+      regexp: '^51\.83\.104\.217.*ansible-test.alma8.beebryte.tech.*$'
+      insertafter: '^127\.0\.0\.1.*localhost.*$'
+      line: 51.83.104.217     ansible-test.alma8.beebryte.tech   ansible-test
+      owner: root
+      group: root
+      mode: '0644'
+      state: present
+      backup: yes
+    ignore_errors: True
+    tags: task13
+
+
+  - name: Start iptables-services
+    service:
+      name: iptables 
+      state: started
+      enabled: yes
+    ignore_errors: True 
+    tags: task15
+  
+
+  - name: Allow related and established connections
+    ansible.builtin.iptables:
+      chain: INPUT
+      ctstate: ESTABLISHED,RELATED
+      jump: ACCEPT
+    ignore_errors: True
+    tags: task17
+  
+
+  - name: Allow new incoming SYN packets on TCP port 22 (SSH)
+    ansible.builtin.iptables:
+      chain: INPUT
+      protocol: tcp
+      destination_port: 22
+      ctstate: NEW
+      syn: match
+      jump: ACCEPT
+      comment: Accept new SSH connections.
+    ignore_errors: True
+    tags: task19
+
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+      #trusted_networks:
+      # In AS278 we trust
+      #- "132.247.0.0/16"
+      #- "132.248.0.0/16"
+      #- "192.100.199.0/24"
+      #- "192.100.200.0/24"
+
+
+  - name: Apply default INPUT and OUTPUT policy
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      chain: "{{ item }}"
+      policy: "{{ default_policy }}"
+    with_items:
+    - "INPUT"
+    - "OUTPUT"
+    ignore_errors: True
+    tags: task21
+  
+
+  - name: Allow INPUT loopback traffic
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      in_interface: "{{ loopback_iface }}"
+      jump: "ACCEPT"
+    ignore_errors: True
+    tags: task23
+  
+
+  - name: Allow OUTPUT loopback traffic
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      table: "filter"
+      chain: "OUTPUT"
+      out_interface: "{{ loopback_iface }}"
+      jump: "ACCEPT"
+    ignore_errors: True
+    tags: task25
+  
+
+  - name: Allow ESTABLISHED and RELATED connections
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      ctstate: "ESTABLISHED,RELATED"
+      jump: "ACCEPT"
+    ignore_errors: True
+    tags: task27
+  
+
+  - name: Allow ICMP traffic
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      protocol: "icmp"
+      jump: "ACCEPT"
+    ignore_errors: True
+    tags: task29
+  
+  # - name: Allow traffic from trusted networks
+  #   iptables:
+  #     table: "filter"
+  #     chain: "INPUT"
+  #     source: "{{ item }}"
+  #     jump: "ACCEPT"
+  #   with_items:
+  #   - "{{ trusted_networks }}"
+  #   ignore_errors: True
+  #   tags: task16
+  
+  - name: Allow traffic on public ports
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      destination_port: "{{ item.port }}"
+      protocol: "{{ item.protocol }}"
+      state: "{{ item.state }}"
+      jump: "ACCEPT"
+    with_items:
+    - { port: 22,protocol: "tcp" , state: "present"}
+    - { port: 80, protocol: "tcp" ,  state: "present"}
+    - { port: 443, protocol: "tcp" , state: "present"}
+    - { port: 4505, protocol: "tcp" , state: "present"}
+    - { port: 4506, protocol: "tcp" , state: "present"}
+    - { port: 389, protocol: "tcp" , state: "present"}
+    - { port: 636, protocol: "tcp" , state: "present"}
+    - { port: 88, protocol: "tcp" , state: "present"}
+    - { port: 464, protocol: "tcp" , state: "present"}
+    - { port: 789, protocol: "tcp" , state: "present"}
+    - { port: 53, protocol: "tcp" , state: "present"}
+    - { port: 123, protocol: "tcp" , state: "present"}
+    - { port: 7389, protocol: "tcp" , state: "present"}
+    - { port: 8443, protocol: "tcp" , state: "present"}
+    - { port: 9443, protocol: "tcp" , state: "present"}
+    - { port: 9444, protocol: "tcp" , state: "present"}
+    - { port: 9445, protocol: "tcp" , state: "present"}
+    - { port: 8005, protocol: "tcp" , state: "present"}
+    - { port: 8009, protocol: "tcp" , state: "present"}
+    ignore_errors: True
+    tags: task31
+  
+
+  - name: Block INVALID Traffic
+    ansible.builtin.iptables:
+      chain: INPUT
+      ctstate: 'INVALID'
+      jump: 'DROP'
+      state: 'present'
+      table: 'filter'
+    ignore_errors: True
+    tags: task33
+
+
+  - name: Reject tcp with tcp-reset
+    ansible.builtin.iptables:
+      chain: INPUT
+      protocol: tcp
+      reject_with: tcp-reset
+      ip_version: ipv4
+    ignore_errors: True
+    tags: task35
+
+  
+  - name: Block other traffic
+    ansible.builtin.iptables:
+      table: "filter"
+      chain: "INPUT"
+      jump: "REJECT"
+    ignore_errors: True
+    tags: task37
+  
+
+  - name: "Drop All Other UmMatched Traffic On INPUT chain"
+    ansible.builtin.iptables:
+      chain: INPUT
+      jump: DROP
+    ignore_errors: True
+    tags: task39
+
+  # - name: "Drop any connection that does not match a rule on the INPUT chain"
+  #   comment: Implicit DENY
+  #   ansible.builtin.iptables:
+  #     chain: INPUT
+  #     jump: DROP
+
+
+  # - name: "Allow HTTP on port 80"
+  #   comment: Insert Rule on Specific Line
+  #   ansible.builtin.iptables:
+  #     action: insert
+  #     chain: INPUT
+  #     protocol: tcp
+  #     destination_port: 80
+  #     rule_num: "4"
+  #     jump: ACCEPT
+  
+
+- name: Playbook to configure IPA server
+  hosts: ipaserver
+  become: true
+  tags: task41
+
+  roles:
+  - role: ipaserver
+    state: present  
+
+
+  # - name: Change multiple lines  
+  #   lineinfile:  
+  #     path: /home/ubuntu/demo.conf
+  #     line: "{{ item.line }}"
+  #     regexp: "{{ item.regexp }}"
+  #   loop:
+  #     - line: 51.83.105.249     iambee1.ipatest.beebryte.uk     iambee1
+  #       regexp: ^127\.0\.0\.1 iambee1.ipatest.beebryte.uk.*$
+  #     - line: PortForwarding yes
+  #       regexp: ^PortForwarding
+  
+

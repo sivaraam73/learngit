@@ -1,0 +1,23 @@
+[defaults]
+localhost_warning=False
+
+[inventory]
+inventory_unparsed_warning=False
+
+[all:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=accept-new'
+
+[ipaserver]
+51.83.104.217 ansible_user=almalinux ansible_ssh_private_key_file=~/.ssh/siva_ovh_cloud
+
+[ipaserver:vars]
+ipaserver_ipaddresses=51.83.104.217
+ipaserver_hostname=ansible-test.alma8.beebryte.tech
+ipaserver_domain=alma8.beebryte.tech
+ipaserver_realm=ALMA8.BEEBRYTE.TECH
+ipaserver_setup_dns=yes
+ipaserver_auto_forwarders=yes
+ipaadmin_password=IAMadmin1
+ipadm_password=IAMDSadmin1
+ipaserver_allow_zone_overlap=yes
+#ipaserver_firewalld_zone=custom zone
