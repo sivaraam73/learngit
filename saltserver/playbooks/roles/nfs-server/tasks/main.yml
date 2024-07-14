@@ -21,14 +21,10 @@
     dest: /etc/exports
     line: '{{ item }}'
   with_items:
-    - '/mnt/data/salt-masters   51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-    - '/mnt/data/salt-masters   51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-    - '/mnt/data/salt-minions   51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-    - '/mnt/data/salt-minions   51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-    - '/mnt/data/salt-backup    51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-    - '/mnt/data/salt-backup    51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
-
-
+    - '/mnt/data/salt-masters   ${ip}(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-masters   ${ip}(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-minions   ${ip}(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    
 
   # - name: Mount NFS Shares On NFS Server
   #   mount:
