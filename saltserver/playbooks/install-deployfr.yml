@@ -1,0 +1,463 @@
+---
+
+
+- name: Install EPEL Package
+  hosts: deployservers
+  remote_user: almalinux
+  become: true
+  tasks:
+  - name: Install package epel-release
+    yum:
+      name: epel-release
+      state: present
+      #when: ansible_facts['os_family'] == "Alma Linux" and ansible_facts['lsb']['major_release'] | int == '8'
+    register: install_epel_release
+    ignore_errors: True
+    tags: task1
+
+
+  - name: Ensure the crb repository is enabled
+    community.general.dnf_config_manager:
+      name: crb
+      state: enabled
+    register: enable_crb
+    ignore_errors: True
+    tags: task2
+
+
+  - name: Upgrade all packages
+    ansible.builtin.dnf:
+      name: "*"
+      state: latest
+    register: upgrade_packages
+    ignore_errors: True
+    tags: task3
+
+
+  - name: Install Standard Packages
+    ansible.builtin.dnf:
+      name:
+        - htop
+        - wget
+        - curl
+        - git
+        - net-tools
+        - nc
+        - iptables-services
+        - golang-github-prometheus-node-exporter
+        - nfs-utils
+        - python-pygit2
+        - libgit2
+      state: latest
+    register: install_packages
+    ignore_errors: True
+    tags: task4
+
+  # - name: Set Open File Limit to 262144 in /etc/sysctl.conf
+  #   ansible.posix.sysctl:
+  #     name: fs.file-max
+  #     value: '262144'
+  #     state: present
+
+  - name: Start iptables-services
+    service:
+      name: iptables
+      state: started
+      enabled: yes
+    ignore_errors: True
+    register: start_iptables
+    tags: task6
+
+
+  - name: Allow related and established connections
+    ansible.builtin.iptables:
+      chain: INPUT
+      ctstate: ESTABLISHED,RELATED
+      jump: ACCEPT
+    ignore_errors: True
+    register: allow_related_estab_conn
+    tags: task8
+
+
+  - name: Allow new incoming SYN packets on TCP port 22 (SSH)
+    ansible.builtin.iptables:
+      chain: INPUT
+      protocol: tcp
+      destination_port: 22
+      ctstate: NEW
+      syn: match
+      jump: ACCEPT
+      comment: Accept new SSH connections.
+    ignore_errors: True
+    register: allow_new_SSH_SYN
+    tags: task10
+
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+      #trusted_networks:
+      # In AS278 we trust
+      #- "132.247.0.0/16"
+      #- "132.248.0.0/16"
+      #- "192.100.199.0/24"
+      #- "192.100.200.0/24"
+
+
+  - name: Apply default INPUT and OUTPUT policy
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      chain: "{{ item }}"
+      policy: "{{ default_policy }}"
+    with_items:
+    - "INPUT"
+    - "OUTPUT"
+    ignore_errors: True
+    register: default_input_output
+    tags: task12
+
+
+  - name: Allow INPUT loopback traffic
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      in_interface: "{{ loopback_iface }}"
+      jump: "ACCEPT"
+    ignore_errors: True
+    register: allow_in_loopback
+    tags: task14
+
+
+  - name: Allow OUTPUT loopback traffic
+    vars:
+      default_policy: "ACCEPT"
+      loopback_iface: lo
+    iptables:
+      table: "filter"
+      chain: "OUTPUT"
+      out_interface: "{{ loopback_iface }}"
+      jump: "ACCEPT"
+    ignore_errors: True
+    register: allow_out_loopback
+    tags: task16
+
+
+  - name: Allow ICMP traffic
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      protocol: "icmp"
+      jump: "ACCEPT"
+    ignore_errors: True
+    register: allow_icmp
+    tags: task20
+
+
+  # - name: Allow traffic from trusted networks
+  #   iptables:
+  #     table: "filter"
+  #     chain: "INPUT"
+  #     source: "{{ item }}"
+  #     jump: "ACCEPT"
+  #   with_items:
+  #   - "{{ trusted_networks }}"
+  #   ignore_errors: True
+  #   tags: task22
+
+
+  - name: Allow traffic on public ports
+    iptables:
+      table: "filter"
+      chain: "INPUT"
+      destination_port: "{{ item.port }}"
+      protocol: "{{ item.protocol }}"
+      state: "{{ item.state }}"
+      jump: "ACCEPT"
+    with_items:
+    - { port: 22,protocol: "tcp" , state: "present"}
+    - { port: 80, protocol: "tcp" ,  state: "present"}
+    - { port: 443, protocol: "tcp" , state: "present"}
+    - { port: 4505, protocol: "tcp" , state: "present"}
+    - { port: 4506, protocol: "tcp" , state: "present"}
+    - { port: 4512, protocol: "tcp" , state: "present"}
+    - { port: 4513, protocol: "tcp" , state: "present"}
+    - { port: 4514, protocol: "tcp" , state: "present"}
+    - { port: 4515, protocol: "tcp" , state: "present"}
+    - { port: 389, protocol: "tcp" , state: "present"}
+    - { port: 636, protocol: "tcp" , state: "present"}
+    - { port: 88, protocol: "tcp" , state: "present"}
+    - { port: 464, protocol: "tcp" , state: "present"}
+    - { port: 789, protocol: "tcp" , state: "present"}
+    - { port: 53, protocol: "tcp" , state: "present"}
+    - { port: 123, protocol: "tcp" , state: "present"}
+    - { port: 7389, protocol: "tcp" , state: "present"}
+    - { port: 111, protocol: "tcp" , state: "present"}
+    - { port: 2049, protocol: "tcp" , state: "present"}
+    - { port: 9100, protocol: "tcp" , state: "present"}
+    ignore_errors: True
+    register: open_ports
+    tags: task24
+
+
+  - name: Block INVALID Traffic
+    ansible.builtin.iptables:
+      chain: INPUT
+      ctstate: 'INVALID'
+      jump: 'DROP'
+      state: 'present'
+      table: 'filter'
+    ignore_errors: True
+    register: block_invalid_traffic
+    tags: task26
+
+
+  - name: Reject tcp with tcp-reset
+    ansible.builtin.iptables:
+      chain: INPUT
+      protocol: tcp
+      reject_with: tcp-reset
+      ip_version: ipv4
+    ignore_errors: True
+    register: reject_tcp_reset
+    tags: task28
+
+
+  - name: Block other traffic
+    ansible.builtin.iptables:
+      table: "filter"
+      chain: "INPUT"
+      jump: "REJECT"
+    ignore_errors: True
+    register: block_other_traffic
+    tags: task30
+
+
+  - name: "Drop All Other UmMatched Traffic On INPUT chain"
+    ansible.builtin.iptables:
+      chain: INPUT
+      jump: DROP
+    ignore_errors: True
+    register: drop_other_traffic
+    tags: task32
+
+
+  - name: List current iptables rules
+    command: iptables-save
+    register: list_iptables
+    ignore_errors: True
+    tags: task34
+  - debug: var=output.stdout_lines
+
+
+  - name: Install Salt REPO Key
+    ansible.builtin.command:
+      cmd: rpm --import 'https://repo.saltproject.io/salt/py3/redhat/9/x86_64/SALT-PROJECT-GPG-PUBKEY-2023.pub'
+    register: install_salt_key
+    ignore_errors: True
+    tags: task36
+
+
+  - name: Remove Previous Salt Repo file
+    ansible.builtin.file:
+      path: /etc/yum.repos.d/salt.repo
+      state: absent
+    register: remove_salt_repo
+    ignore_errors: True
+    tags: task38
+
+
+  - name: Remove Previous Salt-Master Package
+    dnf:
+      name: salt-master
+      state: absent
+    register: remove_previous_salt_package
+    ignore_errors: True
+    tags: task40
+
+
+  - name: Install New Salt Repo
+    ansible.builtin.get_url:
+      url: https://repo.saltproject.io/salt/py3/redhat/9/x86_64/3006.repo
+      dest: /etc/yum.repos.d/salt.repo
+    register: install_new_salt_repo
+    ignore_errors: True
+    tags: task42
+
+
+  - name: Configure Salt-Master Server
+    ansible.builtin.dnf:
+      name: salt-master
+      state: latest
+    register: install_salt_master
+    ignore_errors: True
+    tags: task44
+
+
+  - name: Create this_master dir to store Salt Master Pub - Pte Keys
+    ansible.builtin.file:
+      path: /etc/salt/this_master
+      state: directory
+      mode: '0750'
+      owner: salt
+      group: salt
+    register: create_this_master
+    ignore_errors: True
+    tags: task46
+
+
+
+  - name: Backup Salt Master Keys in /etc/salt/this_master
+    copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      remote_src: yes
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      mode: "{{ item.mode }}"
+    with_items:
+        - { src: '/etc/salt/pki/master/master.pub',
+            dest: '/etc/salt/this_master/master.pub',
+            owner: salt, group: salt, mode: '0644' }
+        - { src: '/etc/salt/pki/master/master.pem',
+            dest: '/etc/salt/this_master/master.pem',
+            owner: salt, group: salt, mode: '0400' }
+
+    register: backup_master_keys
+    ignore_errors: True
+    tags: task48
+
+
+  - name: Add config parameters to /etc/salt/master # set this in /etc/salt/master.d/master.conf
+    ansible.builtin.file:
+      dest: /etc/salt/master
+      line: '{{ item }}'
+    with_items:
+    - 'minion_data_cache: True'
+    - 'max_minions: 500'
+    - 'con_cache: True'
+    - 'sock_pool_size: 15'
+    - 'worker_threads: 25'
+    register: configure_salt_master
+    ignore_errors: True
+    tags: task50
+
+
+  - name: Install master.conf in /etc/salt/master.d
+    ansible.builtin.copy:
+      src: ${pwd}/templates/master.conf
+      dest: /etc/salt/master.d/master.conf
+      owner: salt
+      group: salt
+      mode: '0640'
+    register: install_master_conf
+    ignore_errors: True
+    tags: task54
+
+
+  - name: Install network.conf in /etc/salt/master.d
+    ansible.builtin.copy:
+      src: ${pwd}/templates/network.conf
+      dest: /etc/salt/master.d/network.conf
+      owner: salt
+      group: salt
+      mode: '0644'
+    register: install_network_conf
+    ignore_errors: True
+    tags: task56
+
+
+  - name: Install pillar.conf in /etc/salt/master.d
+    ansible.builtin.copy:
+      src: ${pwd}/templates/pillar.conf
+      dest: /etc/salt/master.d/pillar.conf
+      owner: salt
+      group: salt
+      mode: '0640'
+    register: install_pillar_conf
+    ignore_errors: True
+    tags: task58
+
+
+  - name: Install git.conf in /etc/salt/master.d
+    ansible.builtin.copy:
+      src: ${pwd}/templates/git.conf
+      dest: /etc/salt/master.d/git.conf
+      owner: salt
+      group: salt
+      mode: '0640'
+    register: install_git_conf
+    ignore_errors: True
+    tags: task60
+
+
+
+  - name: Add NFS Mount Points Map To Salt Minion Directories
+    mount:
+      path: "{{ item.path }}"
+      src : "{{ item.src }}"
+      fstype: "{{ item.fstype }}"
+      opts: rw,sync,defaults
+      boot: yes
+      state: present
+
+    with_items:
+      - { path: "/etc/salt/pki/master/minions", src: "51.75.196.252:/mnt/salt/minions", fstype: "nfs" }
+      - { path: "/etc/salt/pki/master/minions_rejected", src: "51.75.196.252:/mnt/salt/minions_rejected", fstype: "nfs" }
+      - { path: "/etc/salt/pki/master/minions_autosign", src: "51.75.196.252:/mnt/salt/minions_autosign", fstype: "nfs" }
+      - { path: "/etc/salt/pki/master/minions_denied", src: "51.75.196.252:/mnt/salt/minions_denied", fstype: "nfs" }
+      - { path: "/etc/salt/pki/master/minions_pre", src: "51.75.196.252:/mnt/salt/minions_pre", fstype: "nfs" }
+
+    register: nfs_client_mount
+    ignore_errors: True
+    tags: task66
+
+  - name: Ensure NFS is started, reloaded and enabled
+    ansible.builtin.systemd_service:
+      state: started
+      name: nfs-server
+      enabled: true
+      daemon-reload: true
+    register: nfs_started_enabled
+    ignore_errors: True
+    tags: task68
+
+
+  - name: Synchronize salt directories with NFS Share on Salt Server.
+    ansible.posix.synchronize:
+      src: "{{ item.src }}"
+      dest: /salt-backup
+    with_items:
+      - { src: '/etc/salt/pki/master/minions'}
+      - { src: '/etc/salt/pki/master/minions_autosign'}
+      - { src: '/etc/salt/pki/master/minions_denied'}
+      - { src: '/etc/salt/pki/master/minions_pre'}
+      - { src: '/etc/salt/pki/master/minions_rejected'}
+    delegate_to: 51.83.107.139
+    register: sync_salt_dir
+    ignore_errors: True
+    tags: task70
+
+
+
+  - name: Read Secret from Hashicorp
+    community.hashi_vault.vault_kv2_get:
+      url: https://secret.beebryte.net/ui/vault
+      engine_mount_point: secrets
+      path: kv/gateways/minions
+      namespace: gateways
+      auth_method: token
+      token_file: 'hvs.CAESIH1kBKhPiuSK_6Ucv6o2ZCVncS2UYi8Xnnjsgw-cs71AGh4KHGh2cy5TZzhZZmtsVnNnN3BnRldvOU8xbWl6ZUI'
+    register: vault_response
+
+    ignore_errors: True
+    tags: task29
+
+
+  - name: Display the results
+    ansible.builtin.debug:
+      msg:
+        - "Secret: {{ vault_response.secret }}"

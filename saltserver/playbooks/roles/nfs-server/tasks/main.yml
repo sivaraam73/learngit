@@ -1,0 +1,102 @@
+---
+
+- name: Install NFS-Server Package
+  ansible.builtin.dnf:
+    name: nfs-utils
+    state: latest
+
+- name: Create Shares & Directories for NFS Export
+  file:
+    path: "/mnt/data/{{item}}"
+    owner: root
+    group: root
+    mode: 0775
+    recurse: yes
+    state: directory
+  with_items: ["salt-masters", "salt-minions", "salt-backup"]
+  
+
+- name: Configure Exports - Each line in with_items is a separate export you wish to add
+  lineinfile: 
+    dest: /etc/exports
+    line: '{{ item }}'
+  with_items:
+    - '/mnt/data/salt-masters   51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-masters   51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-minions   51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-minions   51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-backup    51.83.107.139(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+    - '/mnt/data/salt-backup    51.79.140.77(rw,fsid=0,sync,no_root_squash,no_subtree_check,insecure)'
+
+
+
+  # - name: Mount NFS Shares On NFS Server
+  #   mount:
+  #     src: /mnt/data/{{ item }}
+  #     with_items:
+  #     - salt-masters
+  #     - salt-minions 
+  #     - salt-backup
+  #     path: /mnt/data
+  #     fstype: nfs
+  #     state: mounted
+  #     opts: "defaults, netdev" # To mount only after network connectivity is present
+ 
+
+  # - name: Mount an NFS Volume On Client
+  #   ansible.posix.mount:
+  #     src: 51.75.196.252:/mnt/data
+  #     path: /mnt/data
+  #     opts: rw,sync,hard,defaults,netdev
+  #     state: mounted
+  #     fstype: nfs    
+
+# - name: Make sure the sites-available, sites-enabled and conf.d directories exist
+#   file:
+#     path: "{{nginx_dir}}/{{item}}"
+#     owner: root
+#     group: root
+#     mode: 0755
+#     recurse: yes
+#     state: directory
+#   with_items: ["sites-available", "sites-enabled", "conf.d"]
+
+
+# Configuring line in file 
+# - name: add lines
+#   lineinfile: 
+#     dest: fruits.txt
+#     line: '{{ item }}'
+#   with_items:
+#     - 'Orange'
+#     - 'Apple'
+#     - 'Banana' 
+
+# Another Example 
+# If you need to configure a set of unique property=value lines, I recommend a more concise loop. For example:
+
+# - name: Configure kernel parameters
+#   lineinfile:
+#     dest: /etc/sysctl.conf
+#     regexp: "^{{ item.property | regex_escape() }}="
+#     line: "{{ item.property }}={{ item.value }}"
+#   with_items:
+#     - { property: 'kernel.shmall', value: '2097152' }
+#     - { property: 'kernel.shmmax', value: '134217728' }
+#     - { property: 'fs.file-max', value: '65536' }
+# Using a dict as suggested by Alix Axel and adding automatic removing of matching commented out entries,
+
+# - name: Configure IPV4 Forwarding
+#   lineinfile:
+#     path: /etc/sysctl.conf
+#     regexp: "^#? *{{ item.key | regex_escape() }}="
+#     line: "{{ item.key }}={{ item.value }}"
+#   with_dict:
+#     'net.ipv4.ip_forward': 1
+# - name: Configure nfs-server
+#   template: src=master.j2 dest=/etc/
+
+
+
+- name: Restart salt-master
+  service: name=salt-master state=restarted
