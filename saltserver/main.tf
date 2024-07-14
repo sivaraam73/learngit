@@ -147,7 +147,7 @@ resource "local_file" "hosts_cfg" {
       hosts = openstack_compute_instance_v2.deployment_instances.*.access_ip_v4
     }
   )
-  filename = "/Users/admin/Documents/BeeBryte/Terraform-Ansible-IPA/playbooks/inventory"
+  filename = "${pwd}/playbooks/inventory"
   #depends_on = [openstack_compute_instance_v2.deployment_instances]
   depends_on = [ openstack_compute_instance_v2.deployment_instances[0] ]
 }
@@ -164,13 +164,13 @@ resource "null_resource" "run_ansible" {
       host         =  openstack_compute_instance_v2.deployment_instances[0].access_ip_v4
       type         =  "ssh"
       user         =  "almalinux"
-      private_key  =  file("/Users/admin/.ssh/id_rsa_sivamac")
+      private_key  =  file("${ansible_ssh_private_key_file}")
     }
     inline = ["echo Done!"]
   }
 
   provisioner "local-exec" {
-    command   = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -u almalinux -v -i /home/sivaraam/TF_Salt_Deploy_FR/playbooks/inventory -u almalinux --private-key /home/admin/.ssh/id_rsa_sivamac /home/sivaraam/TF_Salt_Deploy_FR/playbooks/install-deployfr.yml" 
+    command   = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -u almalinux -v -i ${pwd}/playbooks/inventory ${pwd}/playbooks/install-deployfr.yml" 
   }
 }
 

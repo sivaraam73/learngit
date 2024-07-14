@@ -440,24 +440,3 @@
     register: sync_salt_dir
     ignore_errors: True
     tags: task70
-
-
-
-  - name: Read Secret from Hashicorp
-    community.hashi_vault.vault_kv2_get:
-      url: https://secret.beebryte.net/ui/vault
-      engine_mount_point: secrets
-      path: kv/gateways/minions
-      namespace: gateways
-      auth_method: token
-      token_file: 'hvs.CAESIH1kBKhPiuSK_6Ucv6o2ZCVncS2UYi8Xnnjsgw-cs71AGh4KHGh2cy5TZzhZZmtsVnNnN3BnRldvOU8xbWl6ZUI'
-    register: vault_response
-
-    ignore_errors: True
-    tags: task29
-
-
-  - name: Display the results
-    ansible.builtin.debug:
-      msg:
-        - "Secret: {{ vault_response.secret }}"

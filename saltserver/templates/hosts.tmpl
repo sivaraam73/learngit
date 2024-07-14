@@ -8,7 +8,7 @@ inventory_unparsed_warning=False
 
 [deployserver]
 %{ for deployserverip in hosts ~}
-${deployserverip} ansible_ssh_user=${ansible_ssh_user} ansible_ssh_private_key_file=~/.ssh/~/.ssh/{ansible_ssh_private_key_file}
+${deployserverip} ansible_ssh_user=${ansible_ssh_user} ansible_ssh_private_key_file=~/.ssh/${ansible_ssh_private_key_file}
 
 
 [deployserver:vars]

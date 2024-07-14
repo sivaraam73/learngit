@@ -1,6 +1,5 @@
 variable "service_name"{
-  
-  default = "bccc83ea57f44920978bf95c43ef77b1"
+  default = "~/.ovh/service_name"
 }
 
 variable "deployment_instances" {
@@ -35,11 +34,11 @@ variable "instance_count" {
 
 variable "pub_key" {
   type = string
-  default = "/Users/admin/.ssh/id_rsa_sivamac.pub"
+  default = "~/.ssh/id_rsa.pub"
 }
 
 variable "pvt_key" {
    type = string
-   default = "/Users/admin/.ssh/id_rsa_sivamac"
+   default = "~/.ssh/id_rsa"
 
 }
